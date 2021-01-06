@@ -1,4 +1,4 @@
-function [ famNodes ] = createFamNodes(dataSize, family)
+function [ famNodes ] = createFamNodes(dataSize, family)%, freqs)
     famNodes = cell(1,dataSize);
     err = 0;%0.000000001;
     Mendel_00 = [1 err err];
@@ -7,7 +7,6 @@ function [ famNodes ] = createFamNodes(dataSize, family)
     Mendel_11 = [0.25 0.5 0.25];
     Mendel_12 = [err 0.5 0.5];
     Mendel_22 = [err err 1];
-    
     for i=1:length(famNodes)
         if((family(1,i)==0 && family(2,i)==0))
             famNodes{1,i} = Mendel_00;
@@ -27,6 +26,7 @@ function [ famNodes ] = createFamNodes(dataSize, family)
         if((family(1,i)==1 && family(2,i)==2)||(family(1,i)==2 && family(2,i)==1))
             famNodes{1,i} = Mendel_12;
         end
+        %famNodes{1,i} = freqs;
     end
     famNodes = famNodes';
 end

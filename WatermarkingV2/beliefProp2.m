@@ -5,7 +5,7 @@ close all;
 %load('data/population.mat');
 %data = FileData;
 load('data/frequencies.mat');
-load('data/correlationsTrue.mat');
+load('data/correlations.mat');
 load('data/MAFs.mat');
 load('data/cValues.mat');
 load('data/shannons.mat');
@@ -13,39 +13,37 @@ load('data/shannons.mat');
 %for each family
 
 %Resize Main Data
-pheSize = 50;
+pheSize = 20;
 numIterations = 2; %100
 dataSize = 1000;
 wlens = 100;
 families = 1;
 SPs = 1:20;
-difPriCoef = 0:0.1:1;
+%ldp_wl_ratio = 0;%:0.1:1; 
+%cldp = (ldp_wl_ratio / dataSize)' * wlens;
+difPriCoef = 0;%:0.1:1;
 freqs = frequencies(:,1:dataSize)';
-colabs = 10;%2:10;
+entropies = calculateShannonEntropies(freqs);
+colabs = 2:10;
 %aInt = 0.1; %Attacker Intelligence
 MAFs = MAFs(1:dataSize)';
 %frequencies = createFrequencies(MAFs, dataSize);
-ps = zeros([4*20 length(wlens)]);
+%ps = zeros([4*20 length(wlens)]);
 %totalSharingEstimated = length(SPs);
 allResults = zeros([length(difPriCoef)*length(colabs) length(wlens)*4]);
 err = 0.01;
 
-vars2 = zeros([dataSize 3]);
-for i = 1:dataSize
-    vars2(i,1) = (1-MAFs(i))*(1-MAFs(i));
-    vars2(i,2) = 2*MAFs(i)*(1-MAFs(i));
-    vars2(i,3) = MAFs(i)*MAFs(i);
-end    
+utilityLoss = zeros([4*length(families) length(wlens)]);
 
-for famIteration = families
+for f = length(families)
     p1_01 = zeros([length(difPriCoef)*length(colabs) length(wlens)*4]);
-    file = ['family/fam' num2str(famIteration) '/fam' num2str(famIteration) '.mat'];
+    file = ['family/fam' num2str(families(f)) '/fam' num2str(families(f)) '.mat'];
     load(file);
     personalData = family(3,1:dataSize)';
     %PART 2 : RECEIVE INFORMATION STAGE
     %*************************************************************************************************
     %Part 2a: Receiving family information (Moved to upper stages of loop since no change occurs during iterations)
-    Nodes_fam = createFamNodes(dataSize, family);
+    Nodes_fam = createFamNodes(dataSize, family);%, freqs);
 
     %Part 2b: Receiving phenotype information
     Nodes_phe = createPhenotypes(pheSize,cCheckList,family);
@@ -74,8 +72,8 @@ for famIteration = families
         precisionHR = zeros([length(colabs) length(wlens)]);
         precisionE = zeros([length(colabs) length(wlens)]);
         precisionER = zeros([length(colabs) length(wlens)]);
-        utilityScores = zeros([length(SPs) length(wlens)]);
-        kullbacks = cell(length(SPs), length(wlens));
+        attackUtilityLoss = zeros([length(colabs)*4 length(wlens)]);
+        %kullbacks = cell(length(SPs), length(wlens));
         for w = 1:length(wlens)
             %Part 3c: Generate Nodes_c (Correlation Nodes)
             corr = correlations;
@@ -192,33 +190,6 @@ for famIteration = families
             end
             vars = cell2mat(Nodes_var(:,1));
             for sp = SPs
-                %Part 4b: Calculating Nodes_u(self_prob_dist, Nodes_var, frequencies, MAFs, Nodes_c) 
-                %Last 3 parameter never changes
-                %{
-                for j = 1:dataSize
-                    prob = vars(j,:);
-                    Nodes_u(j,2) = {prob};
-                    %Apply utility transformation formula (Rework)
-                    if freqs(j,personalData(j)+1) == 0 || MAFs(j) == 0
-                        u_gain = 1;
-                        u_gain2 = 1;
-                    else
-                        u_gain = log(exp(1-MAFs(j)*MAFs(j)+MAFs(j))+(cos(pi*freqs(j,personalData(j)+1))+1)/2);
-                        u_gain2 = log(exp(1-MAFs(j)*MAFs(j)+MAFs(j))+(cos(pi*(1-freqs(j,personalData(j)+1)))+1)/2); %If not actual state
-                    end
-                    for k = 0:2                           
-                        if personalData(j) == k
-                            prob(k+1) = prob(k+1) * u_gain;
-                        else
-                            prob(k+1) = prob(k+1) * u_gain2;
-                        end
-                    end
-                    prob = prob.^(log(exp(1)+sum(corIns(:,1)==j)));
-                    prob = prob./norm(prob,1);
-                    Nodes_u(j,1) = {prob};
-                end
-                %}
-
                 %Part 4c: Calculating Nodes_ae (self_prob_dist, Nodes_var, shannonEntropy, MAFs)
                 if sp ~= 1 && difPriCoef(difs) ~= 0
                     [atks,results] = calculateAttackDistributionFromVar(vars,sharedDataSoFar,sp,dataSize);
@@ -230,6 +201,7 @@ for famIteration = families
                     Nodes_a{j,3} = sharedDataSoFar(1:sp-1,j);
                 end
                 for t = 1:dataSize
+                    term = 0;
                     while 1
                         condition1_1 = (vars(t,1)*(1-atks(t,1))*exp(difPriCoef(difs)+err)) >= (atks(t,1)*(1-vars(t,1)));
                         condition1_2 = (vars(t,1)*(1-atks(t,1))*exp(-difPriCoef(difs)-err)) <= (atks(t,1)*(1-vars(t,1)));
@@ -241,10 +213,13 @@ for famIteration = families
                         cond(isnan(cond)) = 0;
                         if sum(cond) == 6
                             break;
+                        elseif term > 20
+                            atks(t,:) = vars(t,:);
                         else
                             atks(t,:) = atks(t,:)+vars(t,:);
                             atks(t,:) = atks(t,:)./norm(atks(t,:),1);
                         end
+                        term = term + 1;
                     end
                     Nodes_a(t,1) = {atks(t,:)};
                 end
@@ -255,8 +230,11 @@ for famIteration = families
                 wScore(:,2) = 1:dataSize;
                 wScore(:,3:5) = atks;
                 wScore = sortrows(wScore,'descend');
-                sharedDataSoFar(sp,:) = watermark(personalData, atks, wScore, wlens(w));
-                %kullbacks(sp,w) = {calculateCrossEntropies(vars,freqs) - calculateShannonEntropies(vars)};
+                if sp ~= 1
+                    sharedDataSoFar(sp,:) = watermark2(personalData, atks, wScore, wlens(w), sharedDataSoFar(1:sp-1,:));
+                else
+                    sharedDataSoFar(sp,:) = watermark(personalData, atks, wScore, wlens(w));
+                end
             end
             
             %*************************************************************************************************
@@ -264,27 +242,39 @@ for famIteration = families
             for c = 1:length(colabs)
                 %Show Stage
                 [t1,t2,t3] = hms(datetime('now'));
-                fprintf('Fam Iteration: %d, W_Length: %d, eDP: %.1f, Colabs: %d, %d:%d:%d\n',famIteration, wlens(w), difPriCoef(difs), colabs(c), t1, t2, round(t3));
-                [precisionH,precisionHR] = attackHGeneralized(precisionH,precisionHR,sharedDataSoFar,SPs,wlens,w,colabs,c,vars);
-                [precisionE,precisionER] = attackEGeneralized(precisionE,precisionER,sharedDataSoFar,SPs,wlens,w,colabs,c,vars);
+                fprintf('Family: %d, W_Length: %d, eDP: %.1f, Colabs: %d, %d:%d:%d\n',families(f), wlens(w), difPriCoef(difs), colabs(c), t1, t2, round(t3));
+                [precisionH,precisionHR,loss1h,loss2h] = attackHGeneralized(precisionH,precisionHR,sharedDataSoFar,wlens,w,colabs,c,vars,personalData,freqs);
+                [precisionE,precisionER,loss1e,loss2e] = attackEGeneralized(precisionE,precisionER,sharedDataSoFar,wlens,w,colabs,c,vars,personalData,freqs);
                 precisionH(c,w)  = 100.*precisionH(c,w)./((length(SPs)*(length(SPs)-1)/2)); %Number of all pairs is given in the formula's denominator
                 precisionHR(c,w) = 100.*precisionHR(c,w)./((length(SPs)*(length(SPs)-1)/2)); %Number of all pairs is given in the formula's denominator
                 precisionE(c,w)  = 100.*precisionE(c,w)./((length(SPs)*(length(SPs)-1)/2)); %Number of all pairs is given in the formula's denominator
                 precisionER(c,w) = 100.*precisionER(c,w)./((length(SPs)*(length(SPs)-1)/2)); %Number of all pairs is given in the formula's denominator
-            end   
+                attackUtilityLoss(c,w) = (loss1h+loss1e)/2;
+                attackUtilityLoss(length(colabs)+c,w) = (loss2h+loss2e)/2;
+                attackUtilityLoss(2*length(colabs)+c,w) = calculateUtilityLoss(sharedDataSoFar,personalData,freqs);
+                attackUtilityLoss(3*length(colabs)+c,w) = calculateUtilityLoss2(sharedDataSoFar,personalData);
+            end
         end
+        utilityLoss(length(families)-1+f,:) = mean(attackUtilityLoss(1:length(colabs),:));
+        utilityLoss(2*length(families)-1+f,:) = mean(attackUtilityLoss(length(colabs)+1:2*length(colabs),:));
+        utilityLoss(3*length(families)-1+f,:) = mean(attackUtilityLoss(2*length(colabs)+1:3*length(colabs),:));
+        utilityLoss(4*length(families)-1+f,:) = mean(attackUtilityLoss(3*length(colabs)+1:4*length(colabs),:));
         %save(['results/Utility_w10rr08.mat'],'utilityScores'); %num2str(ceil(ldp_wl_ratio(ldp)*10)) '.mat'],'utilityScores');
         %p1_01(ldp,:) = [precisionE precisionER precisionH precisionHR];
         p1_01(((difs-1)*length(colabs)+1):((difs-1)*length(colabs)+length(colabs)),:) = [precisionE precisionER precisionH precisionHR];
     end
     allResults = allResults + p1_01;
-    %save(['results/fam/p1_01_fam' num2str(famIteration) '.mat'],'p1_01');
+    %save(['results/attacks/partialShareAttack/x3.0removed_util_prec.mat'],'p1_01','attackUtilityLoss','utilityLoss');
 end
 allResults = allResults./length(families);
-clear t1 t2 t3 file filename famNodeNum famIteration dataSize aa kids h mods numIterations 
+clear t1 t2 t3 file filename famNodeNum famIteration dataSize aa kids h mods numIterations term
 clear patternThreshold sp SPs totalSharingEstimated watermarkLength wlens fgroupNum
-clear cNum graph final_mssg corr_mssg prob pheSize aInt
+clear cNum graph final_mssg corr_mssg prob pheSize aInt shannons
 clear i y cldp k temp temp2 rr m t ratio j repeat w a x families
-clear pheIs pheIsA famIsA correlations frequencies
+clear pheIs pheIsA famIsA correlations frequencies cond count difs err
 clear v1 v2 v3 v4 difPriCoef u_gain u_gain2 ldp_wl_ratio c colabs ldp
+clear condition1_1 condition1_2 condition2_1 condition2_2 condition3_1 condition3_2
 %clear precisionE precisionER precisionH precisionHR
+%}
+
+%save(['results/PrecResults10w20sp10colab' num2str(difPriCoef) 'randresp3.mat']);
