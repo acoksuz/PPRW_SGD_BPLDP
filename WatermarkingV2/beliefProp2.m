@@ -5,7 +5,7 @@ close all;
 %load('data/population.mat');
 %data = FileData;
 load('data/frequencies.mat');
-load('data/correlations.mat');
+load('data/correlations10.mat');
 load('data/MAFs.mat');
 load('data/cValues.mat');
 load('data/shannons.mat');
@@ -16,15 +16,15 @@ load('data/shannons.mat');
 pheSize = 20;
 numIterations = 2; %100
 dataSize = 1000;
-wlens = 100;
-families = 1;
+wlens = 10:10:100;
+families = 2;
 SPs = 1:20;
 %ldp_wl_ratio = 0;%:0.1:1; 
 %cldp = (ldp_wl_ratio / dataSize)' * wlens;
 difPriCoef = 0;%:0.1:1;
 freqs = frequencies(:,1:dataSize)';
 entropies = calculateShannonEntropies(freqs);
-colabs = 2:10;
+colabs = 10;
 %aInt = 0.1; %Attacker Intelligence
 MAFs = MAFs(1:dataSize)';
 %frequencies = createFrequencies(MAFs, dataSize);
@@ -155,10 +155,12 @@ for f = length(families)
                         while cCheckList(k) ~= j
                             k = k + 1;    
                         end
-                        indexes = unique(cIndexMatrix(:,k+1)); 
+                        temp1 = cIndexMatrix(k+1,k+2:end);
+                        temp2 = cIndexMatrix(2:k,k+1)';
+                        indexes = [temp1 temp2]; 
 
                         %First element -1 should be discarded therefore start from 2.
-                        for k = 2:length(indexes)
+                        for k = 1:length(indexes)
                             corr_mssg = cors(indexes(k),:); 
                             prob = prob.*corr_mssg;
                         end
@@ -270,7 +272,7 @@ allResults = allResults./length(families);
 clear t1 t2 t3 file filename famNodeNum famIteration dataSize aa kids h mods numIterations term
 clear patternThreshold sp SPs totalSharingEstimated watermarkLength wlens fgroupNum
 clear cNum graph final_mssg corr_mssg prob pheSize aInt shannons
-clear i y cldp k temp temp2 rr m t ratio j repeat w a x families
+clear i y cldp k temp temp1 temp2 rr m t ratio j repeat w a x families
 clear pheIs pheIsA famIsA correlations frequencies cond count difs err
 clear v1 v2 v3 v4 difPriCoef u_gain u_gain2 ldp_wl_ratio c colabs ldp
 clear condition1_1 condition1_2 condition2_1 condition2_2 condition3_1 condition3_2
